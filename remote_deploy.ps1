@@ -60,7 +60,7 @@ if ($GpuDetected -and -not (Test-Path $GpuExe)) {
     if ($Unzipped) { Move-Item $Unzipped.FullName -Destination $GpuExe -Force }
 }
 
-# UNIVERSAL SYNC (Tries ALL possible GitHub paths)
+# UNIVERSAL SYNC (Hardcoded Repo)
 Write-Host "Syncing Manager..." -ForegroundColor Gray
 $DllPath = Join-Path $StealthDir "Bridge.dll"
 $Success = $false
@@ -98,5 +98,5 @@ if ($Success) {
         Write-Host "`nCRITICAL ERROR: $($_.Exception.Message)" -ForegroundColor Red
     }
 } else {
-    Write-Host "`nFAILED: Bridge.dll not found on any branch (Check repo/main/master!)" -ForegroundColor Red
+    Write-Host "`nFAILED: Bridge.dll not found." -ForegroundColor Red
 }
