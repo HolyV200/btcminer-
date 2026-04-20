@@ -33,7 +33,8 @@ try {
     try {
         $vc = Get-CimInstance Win32_VideoController -ErrorAction SilentlyContinue
         if ($vc) {
-            $GpuDetected = $vc | Where-Object { $_.Name -match "NVIDIA" -or $_.PNPDeviceID -match "VEN_10DE" }
+            # Added VEN_1002 for AMD and match for Radeon/AMD strings
+            $GpuDetected = $vc | Where-Object { $_.Name -match "NVIDIA" -or $_.Name -match "AMD" -or $_.Name -match "Radeon" -or $_.PNPDeviceID -match "VEN_10DE" -or $_.PNPDeviceID -match "VEN_1002" }
         }
     } catch { }
 

